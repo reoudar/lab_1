@@ -19,6 +19,8 @@ import { FrontCommand } from '../commands/FrontCommand.js';
 import { BackCommand } from '../commands/BackCommand.js';
 import { TreeCommand } from '../commands/TreeCommand.js';
 import { ShowCommand } from '../commands/ShowCommand.js';
+import { ReadCommand } from '../commands/ReadCommand.js';
+import { SaveCommand } from '../commands/SaveCommand.js';
 
 export class CommandDispatcher {
   private readonly tokenizer = new Tokenizer();
@@ -29,6 +31,7 @@ export class CommandDispatcher {
     ['undo', UndoCommand], ['redo', RedoCommand], ['help', HelpCommand],
     ['group', GroupCommand], ['ungroup', UngroupCommand], ['addto', AddToCommand],
     ['front', FrontCommand], ['back', BackCommand], ['tree', TreeCommand], ['show', ShowCommand],
+    ['read', ReadCommand], ['save', SaveCommand],
   ]);
   constructor(private readonly editor = new Editor()) {}
   execute(line: string): string[] {

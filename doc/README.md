@@ -1,6 +1,6 @@
 # SVG CLI Phase 1 项目说明
 
-> 状态：S1（工程骨架、词法分析、`help`/REPL）、S2（六类图形、文档树、Composite、工厂）、S3（编辑命令、快照式历史、undo/redo）与 S4（group/ungroup/addto/front/back、tree/show）已完成；S5–S6 尚未实施。
+> 状态：S1（工程骨架、词法分析、`help`/REPL）、S2（六类图形、文档树、Composite、工厂）、S3（编辑命令、快照式历史、undo/redo）、S4（group/ungroup/addto/front/back、tree/show）与 S5（SVG 读写、存储适配、IO 屏障）已完成；S6 尚未实施。
 
 ## 架构方案
 
@@ -9,12 +9,12 @@
 | 目录 | 职责 | 当前状态 |
 | --- | --- | --- |
 | `src/domain/` | 图形抽象与具体叶子、`Group` 容器、几何约束、文档树、唯一 id 管理；`move`/`scale`/`set` 等通过多态统一处理叶子与容器 | **已实现（S2）** |
-| `src/application/` | 编辑会话、命令接口、历史（undo/redo）、树/属性格式化、`DocumentStore` 端口；不读取 stdin、不直接操作文件 | **部分实现（S3/S4；存储端口待 S5）** |
-| `src/commands/` | 每条编辑命令一个类：解析后的参数校验、调用领域行为、产生可撤销结果 | **部分实现（S3/S4；read/save 待 S5）** |
-| `src/cli/` | 双引号词法分析、唯一的命令名分发、REPL、用户输出；stdin/stdout 只出现在这里 | **已实现（S1/S3/S4）** |
-| `src/infrastructure/` | SVG XML 编解码与文件系统适配，实现 application 定义的端口 | 计划（S5） |
-| `src/main.ts` | 组合根：创建具体实现并注入，负责启动 | **已实现（S1）** |
-| `test/` | 单元测试、失败原子性、undo/redo、结构编辑与显示、SVG 往返、真实 CLI 回放与依赖检查 | **部分实现（S1–S4）** |
+| `src/application/` | 编辑会话、命令接口、历史（undo/redo）、树/属性格式化、`DocumentStore` 端口；不读取 stdin、不直接操作文件 | **已实现（S3–S5）** |
+| `src/commands/` | 每条命令一个类：参数校验、调用应用/领域行为；编辑命令可撤销，IO/显示命令不进入历史 | **已实现（S3–S5）** |
+| `src/cli/` | 双引号词法分析、唯一的命令名分发、REPL、用户输出；stdin/stdout 只出现在这里 | **已实现（S1/S3/S4/S5）** |
+| `src/infrastructure/` | SVG XML 编解码、变换归一化、文件系统适配，实现 application 定义的端口 | **已实现（S5）** |
+| `src/main.ts` | 组合根：创建 `FileDocumentStore` 并注入 `Editor`，负责启动 | **已实现（S1/S5）** |
+| `test/` | 单元测试、失败原子性、undo/redo、结构编辑与显示、SVG 往返、真实 CLI 回放与依赖检查 | **部分实现（S1–S5）** |
 | `examples/` | 可回放的命令脚本与示例 SVG 输入 | 计划（S6） |
 
 当前落地内容：
@@ -23,6 +23,7 @@
 - S2：`src/domain/` 下的 `Value`、`Shape`、`Rect`、`Circle`、`Ellipse`、`Line`、`TextShape`、`Group`、`SvgDocument`、`ShapeFactory`，以及 `test/domain.test.mjs`。
 - S3：`src/application/{Arguments,Command,EditCommand,CommandHistory,Editor}.ts`、`src/commands/` 下 10 个命令类、更新后的 `src/cli/CommandDispatcher.ts`，以及 `test/editing.test.mjs`。
 - S4：`src/application/TreeFormatter.ts`、`src/commands/{Group,Ungroup,AddTo,Front,Back,Tree,Show}Command.ts`，以及更新后的 `CommandDispatcher`、`HelpCommand`、`Shape`（样式继承）、`SvgDocument`（group/ungroup/addto/reorder）与 `test/structure.test.mjs`。
+- S5：`src/application/DocumentStore.ts`、`src/commands/{Read,Save}Command.ts`、`src/infrastructure/{FileDocumentStore,SvgCodec,SvgTransform}.ts`、更新后的 `Editor`/`main`/`CommandDispatcher`/`HelpCommand` 与 `test/svg.test.mjs`；新增运行时依赖 `@xmldom/xmldom`。
 
 ```plantuml
 @startuml
@@ -49,10 +50,10 @@ infrastructure --> domain
 
 | 模式 | 落地点 | 现状 | 说明 |
 | --- | --- | --- | --- |
-| **Command** | `src/commands/` 每个命令一个类；`src/application/{Command,EditCommand,CommandHistory,Editor}` 负责执行与撤销/重做 | **已实现（S3/S4）** | 每条编辑命令封装为对象，成功后进入历史；一条命令是一个撤销单元。`EditCommand` 在工作副本上执行，保存执行前后快照；`tree`/`show` 等显示命令继承 `Command`，不进入历史。历史只接受成功执行的命令，失败不改变文档 |
+| **Command** | `src/commands/` 每个命令一个类；`src/application/{Command,EditCommand,CommandHistory,Editor}` 负责执行与撤销/重做 | **已实现（S3–S5）** | 每条编辑命令封装为对象，成功后进入历史；一条命令是一个撤销单元。`EditCommand` 在工作副本上执行，保存执行前后快照；`tree`/`show` 与 `read`/`save` 继承 `Command`，不进入历史。历史只接受成功执行的命令，失败不改变文档 |
 | **Composite** | `src/domain/` 的 `Shape` 抽象、叶子图形与 `Group` 容器；`SvgDocument` 的 group/ungroup/addto/reorder | **已实现（S2/S4）** | 叶子与容器共用 `move`/`scale`/`set` 等接口；容器递归作用于子孙。`group` 保持文档顺序，`ungroup` 提升子节点并继承组样式，`addto` 移动归属，`front`/`back` 调整同级顺序 |
-| **Factory** | `src/domain/ShapeFactory.ts`：类型名 → 具体类 | **已实现（S2）** | 集中注册六种内置类型；CLI 创建已接入（S3），SVG 读入待 S5，避免在领域代码中散布 `switch(tag)`；按名分派集中于此，并标记为后续插件化重构点 |
-| **Adapter / 依赖倒置** | `application` 定义 `DocumentStore` 端口；`infrastructure` 实现文件与 XML 编解码 | S5 落地 | 应用层只依赖端口，便于替换存储介质或在测试中使用内存实现 |
+| **Factory** | `src/domain/ShapeFactory.ts`：类型名 → 具体类 | **已实现（S2）** | 集中注册六种内置类型；CLI 创建（S3）与 SVG 读入（S5）共用同一工厂，避免在领域代码中散布 `switch(tag)`；按名分派集中于此，并标记为后续插件化重构点 |
+| **Adapter / 依赖倒置** | `application/DocumentStore` 端口；`infrastructure/FileDocumentStore` 实现文件读写，`SvgCodec` 负责 XML 编解码 | **已实现（S5）** | 应用层只依赖端口，可替换存储介质或在测试中使用内存实现；文件/XML 细节全部隔离在 infrastructure |
 
 **Command 的落地契约**（S3 已实现）：
 
@@ -67,7 +68,7 @@ abstract class EditCommand extends Command {
 }
 ```
 
-`EditCommand.apply` 先克隆当前文档，在副本上执行 `change`，全部成功后才记录执行前后快照；`CommandHistory` 只把成功的命令压入 `past`，并在新编辑后清空 `future`。`init`、`canvas` 修改尺寸和后续的 `read`/`save` 会设置历史屏障。`CommandDispatcher` 只负责“命令名 → 命令类”的一次性映射，不承载领域逻辑。`tree`/`show` 由 `application/TreeFormatter` 统一格式化，不改动文档，因此不进入历史。
+`EditCommand.apply` 先克隆当前文档，在副本上执行 `change`，全部成功后才记录执行前后快照；`CommandHistory` 只把成功的命令压入 `past`，并在新编辑后清空 `future`。`init`、`canvas` 修改尺寸与成功的 `read`/`save` 会设置历史屏障；IO 失败不改变文档、路径和重做栈。`CommandDispatcher` 只负责“命令名 → 命令类”的一次性映射，不承载领域逻辑。`tree`/`show` 由 `application/TreeFormatter` 统一格式化，不改动文档，因此不进入历史。
 
 ### 3. 依赖方向规则
 
@@ -86,17 +87,17 @@ abstract class EditCommand extends Command {
 - 禁止反向依赖与循环依赖；一旦出现即列为待处理项。
 - 文件系统与 stdin/stdout 只能出现在 `infrastructure` 和 `cli/Repl`，不得进入 `domain`/`application`。
 - 按名字分派只允许两处：`cli/CommandDispatcher`（命令名 → 命令）与 `domain/ShapeFactory`（类型名 → 类），两处均标记为后续插件化重构点。
-- 当前检查结果：`domain` 仅依赖自身与 TypeScript 类型，不依赖 Node IO；`application → domain`（`Editor`/`EditCommand`/`CommandHistory`/`Arguments`/`TreeFormatter`）；`commands → application + domain`；`cli → commands + application`；`main → cli`。无反向或循环依赖。`infrastructure` 尚未创建。按名分派为 `cli/CommandDispatcher`（命令名 → 命令类）与 `domain/ShapeFactory`（类型名 → 类），均为约定内、待插件化重构点；当前无违反项。
+- 当前检查结果：`domain` 仅依赖自身与 TypeScript 类型，不依赖 Node IO；`application → domain`（`Editor`/`EditCommand`/`CommandHistory`/`Arguments`/`TreeFormatter`/`DocumentStore`）；`commands → application + domain`；`cli → commands + application`；`infrastructure → application + domain`（`FileDocumentStore`/`SvgCodec`/`SvgTransform`）；`main → cli + infrastructure`。无反向或循环依赖；`@xmldom/xmldom` 仅被 `infrastructure/SvgCodec` 使用。按名分派为 `cli/CommandDispatcher`（命令名 → 命令类）与 `domain/ShapeFactory`（类型名 → 类），均为约定内、待插件化重构点；当前无违反项。
 
 ### 4. 变化点假设
 
 | 可能的变化 | 预留措施 | 决定不做/不提前做的理由 |
 | --- | --- | --- |
-| 新增图形类型与 `box` 插件 | `Shape` 抽象与 `ShapeFactory` 已落地并集中注册六种内置类型；序列化计划保留 `data-kind` 以便读回还原 | 本阶段明确不实现 `box`（阶段边界），避免过早引入插件装载机制 |
+| 新增图形类型与 `box` 插件 | `Shape` 抽象与 `ShapeFactory` 已落地并集中注册六种内置类型；`data-kind` 已作为导入属性保留，未装插件时 `box` 降级为普通 `g` | 本阶段明确不实现 `box`（阶段边界），避免过早引入插件装载机制 |
 | 增加 GUI 或 agent 输入通道 | 应用/命令不读取 stdin，输入全部适配在 `cli`；命令对象不依赖终端 | 本阶段只交付 CLI，不提前抽象多前端 |
-| 更换存储介质（内存、数据库、远程） | `DocumentStore` 端口 + `infrastructure` 适配器 | 本阶段只需文件读写，端口先定义、实现随 S5 落地 |
+| 更换存储介质（内存、数据库、远程） | `DocumentStore` 端口与 `FileDocumentStore` 适配器已落地（S5） | 本阶段只需文件读写；替换实现时应用层无需修改 |
 | 大文档下撤销性能 | 当前 `EditCommand` 采用执行前后文档快照（Memento 思路），保证失败原子性；后续可替换为差量命令 | 本阶段文档规模小，优先正确性；不做持久化树/增量结构 |
-| 支持更多 SVG 语法 | 编解码集中在 `infrastructure`，领域不感知 XML | 明确支持边界；遇到不能安全处理的结构必须报错，不静默丢弃 |
+| 支持更多 SVG 语法 | 编解码集中在 `infrastructure/SvgCodec`，领域不感知 XML；仅支持六类图形、`translate`/正等比 `scale` 与属性白名单 | 明确支持边界；DTD/实体、未知元素/属性/命名空间、非法变换一律报错，不静默丢弃 |
 
 ## 过程记录
 
@@ -143,6 +144,16 @@ abstract class EditCommand extends Command {
 - 验证：新增 4 个结构测试；`npm test` 15/15 通过（分词 3 + 领域 4 + 编辑 4 + 结构 4）。
 - 阶段边界：`read`/`save`（S5）、插件化与 `box`（后续阶段）尚未实现。
 
+### S5：SVG 文件读写与存储适配
+
+- `application/DocumentStore` 定义 `read`/`write` 端口；`Editor` 注入端口，负责 `read`/`save`、记住当前路径、设置 IO 历史屏障；`main` 组装 `FileDocumentStore`。
+- `FileDocumentStore`：UTF-8 严格解码；写入使用同目录临时文件 + `rename` 原子替换，失败清理临时文件，避免截断已有 SVG；读写失败均保持文档、路径和 redo 栈不变。
+- `SvgCodec` 读取：校验 `<svg>` 根、命名空间与 `viewBox`；先保留所有显式 id，再按 `标签名+序号` 为缺 id 元素确定性补全并输出警告；支持六类图形、文本内容、样式继承、属性白名单与 `data-*` 透传；未知元素/属性/命名空间、DTD/实体、非法 XML 字符显式报错。
+- `SvgTransform`：仅支持 `translate` 与正等比 `scale`，按父子累计变换归一化到几何属性；文本 `font-size` 与 `stroke-width` 随缩放调整；非等比/旋转等不支持变换报错。
+- 序列化：输出 XML 声明、SVG 命名空间与缩进结构，正确转义文本；读回后再编码保持一致（round-trip）。
+- 验证：新增 8 个 SVG/IO 测试；`npm test` 23/23 通过（分词 3 + 领域 4 + 编辑 4 + 结构 4 + SVG 8）。
+- 阶段边界：插件化、`box` 与 `examples/` 尚未实现（S6）。
+
 ### 来自实现与自查的修正
 
 - **引号信息必须保留**：`create text t 1 2 "开始 in here"` 中的 `in` 是文本内容，不能当作 `in <containerId>` 子句。因此 `Token` 记录 `isQuoted`，后续语法解析只在未加引号的 token 上识别关键字。
@@ -161,6 +172,11 @@ abstract class EditCommand extends Command {
 - **ungroup 处理样式继承**：解散容器时，组上的样式合并到没有同名样式的子节点，避免视觉属性丢失；子节点顺序保持不变。
 - **显示命令不进历史**：`tree`/`show` 只读取文档并格式化输出，执行后 `undo` 仍撤销上一条编辑命令。
 - **结构失败保持状态**：祖先/后代循环、重复成员、根级 ungroup、addto 自包含等失败均不改变文档；测试用前后 `tree` 输出对比验证。
+- **先保留显式 id 再补全**：读入时若先补 id 可能占用后续显式 id；实现先收集全部显式 id，再生成 `rect1`/`g1` 等，保证确定性和唯一性（测试覆盖 `rect2`）。
+- **写文件不破坏原文件**：`FileDocumentStore` 写临时文件后原子 rename；目标不可写时原文件保持原样，redo 栈也未被清空。
+- **IO 成功才设屏障**：`read`/`save` 成功后清空历史并禁止 undo/redo；失败的读取或写入不影响当前文档、路径与重做栈。
+- **只接受可安全展开的 SVG**：DTD/实体、未知元素/属性/命名空间、非法 XML 字符、非等比或旋转变换均显式报错；`translate`/正等比 `scale` 会展开进几何，输出不再保留 `transform`。
+- **组透明度不展开**：`Group` 拒绝导入 `opacity`，因为组的透明度会与重叠子元素合成，简单下发到子元素会改变视觉效果。
 
 ### 修订记录
 
@@ -170,19 +186,21 @@ abstract class EditCommand extends Command {
 | S2 | 更新模块状态、Composite/Factory 落地情况、领域测试与依赖检查；新增 S2 过程记录 | 实现与方案对齐 |
 | S3 | 更新 Command 落地契约、命令/历史/屏障/失败原子性；补充编辑测试与依赖边；标注 S4–S6 未完成项 | 反映当前实现并避免过度声明 |
 | S4 | 更新树结构命令、显示格式化、group 顺序与 ungroup 样式继承；补充 4 项结构测试；标注 S5–S6 未完成项 | 实现与文档同步 |
+| S5 | 更新 DocumentStore/SVG 编解码/原子写入/变换归一化/IO 屏障；补充 8 项 SVG 测试与依赖边；标注 S6 未完成项 | 实现与文档同步 |
 
 ## 一致性自查
 
-1. **模块划分**：与终态方案**暂不一致**——实际已有 `src/cli/`、`src/domain/`、`src/application/`、`src/commands/`、`src/main.ts` 与 `test/{tokenizer,domain,editing,structure}.test.mjs`；`infrastructure` 与 `examples` 尚未创建，`read`/`save` 待 S5。该差异属于分步实施中的计划内未完成项，已记入“模块划分·当前状态”、S1–S4 过程记录与修订记录；待 S5–S6 完成后重新逐项核对。
-2. **依赖方向**：现有依赖为 `main → cli`；`cli → commands + application`；`commands → application + domain`；`application → domain`（含 `TreeFormatter`）；`domain` 内部为具体图形 → `Shape` → `Value`，`Group` 依赖 `Shape`/`Value`，`SvgDocument` 依赖 `Shape`/`Group`/`Value`，`ShapeFactory` 依赖各具体图形。无反向依赖或循环；`cli` 不直接依赖 `domain`，stdin/stdout 仅出现在 `Repl`，文件 IO 尚未出现。
+1. **模块划分**：与终态方案**基本一致**——`domain`、`application`、`commands`、`cli`、`infrastructure`、`main` 均已落地，测试目录覆盖 `tokenizer/domain/editing/structure/svg`；仅 `examples/` 尚未创建（S6），插件化与 `box` 属后续阶段。该差异已记入“模块划分·当前状态”、S1–S5 过程记录与修订记录；待 S6 完成后重新核对。
+2. **依赖方向**：现有依赖为 `main → cli + infrastructure`；`cli → commands + application`；`commands → application + domain`；`application → domain`（含 `TreeFormatter`/`DocumentStore`）；`infrastructure → application + domain`（`FileDocumentStore`/`SvgCodec`/`SvgTransform`）；`domain` 内部为具体图形 → `Shape` → `Value`，`Group` 依赖 `Shape`/`Value`，`SvgDocument` 依赖 `Shape`/`Group`/`Value`，`ShapeFactory` 依赖各具体图形。无反向依赖或循环；`cli` 不直接依赖 `domain`，stdin/stdout 仅出现在 `Repl`，文件系统与 `@xmldom/xmldom` 仅出现在 `infrastructure`。
 
 ## 质量保证手段
 
-- **已执行**：`npm install`、`npm run build`、`npm test`（15/15 通过：分词 3 + 领域 4 + 编辑 4 + 结构 4），并用管道向 CLI 回放 `help`、非法命令与注释行，确认错误隔离与注释行为。
+- **已执行**：`npm install`、`npm run build`、`npm test`（23/23 通过：分词 3 + 领域 4 + 编辑 4 + 结构 4 + SVG/IO 8），并用管道向 CLI 回放 `help`、非法命令与注释行，确认错误隔离与注释行为。
 - **自动门禁**：TypeScript 严格编译（`strict`、`noUncheckedIndexedAccess`、`noUnusedLocals/Parameters`）+ `node --test`。
 - **当前测试覆盖**：
   - 分词：引号、转义、Unicode、Windows 路径、空字符串；整行注释；未闭合引号与非法引号位置；错误恢复；`help` 分发。
   - 领域：五类叶子多态 `move`/`scale`；嵌套 `Group` 递归、深拷贝、样式继承；全局大小写敏感 id 唯一性与失败插入不改变文档；未知类型、非法数值、负尺寸、属性白名单、自嵌套循环与非法缩放因子。
   - 编辑与历史：`create`/`move`/`scale`/`set`/`delete` 各自形成可撤销单元；undo/redo 正确恢复；失败保持文档与重做栈；成功后清空 redo；`init`/`canvas` 修改尺寸的 IO 屏障；带引号 `"in"`、子树删除、数值溢出回滚。
   - 结构与显示：`group` 保持文档顺序并可 undo；跨父级 group 的归属；`addto`、`front`/`back` 的同级顺序；祖先/循环/重复成员/根级 ungroup 失败不改状态；`tree`/`show` 的层级、几何、文本与样式输出且不进入历史。
-- **后续计划**：S5 增加 `read`/`save`、缺失 id 自动补全、XML 转义与 SVG round-trip 测试；S6 增加模块依赖与一类一文件检查、回放 `phase_cli_1.md` 的典型会话。
+  - SVG/IO：缺 id 先保留显式 id 再确定性补全；六类图形、省略样式、嵌套、Unicode 与文本转义 round-trip；非法 XML/id 重复/未知元素/属性/命名空间/DTD/实体/非法变换显式失败；`viewBox`/`data-kind` 保留且 `box` 降级为 `g`；`translate`/等比缩放展开；成功 IO 屏障与路径记忆、失败 IO 保持文档/路径/redo、原子写入不破坏原文件。
+- **后续计划**：S6 增加 `examples/` 回放、模块依赖与一类一文件检查、最终一致性自查。

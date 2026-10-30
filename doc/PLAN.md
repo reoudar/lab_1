@@ -9,5 +9,5 @@
 | S2 | 六类图形、文档、Composite | 几何、唯一 id、嵌套、深拷贝测试 | 已完成 |
 | S3 | 编辑命令与历史 | create/move/scale/set/delete、undo/redo 原子性 | 已完成 |
 | S4 | 树结构编辑与显示 | group/ungroup/addto/front/back、顺序与循环检查 | 已完成 |
-| S5 | SVG 文件读写 | 自动补 id、XML 转义、往返、IO 历史屏障 | 待实施 |
+| S5 | SVG 文件读写 | 自动补 id、XML 转义、往返、IO 历史屏障 | 已完成 |
 | S6 | 完整验收及提交说明 | 案例回放、依赖审计、文档自查、final tag | 待实施 |

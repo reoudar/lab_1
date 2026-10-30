@@ -19,6 +19,12 @@ export class Value {
   }
   static id(id: string): string {
     if (!id || /[\s\x00-\x1f]/u.test(id)) throw new Error('id must be non-empty and contain no whitespace');
-    return id;
+    return this.xmlText(id);
+  }
+  static xmlText(value: string): string {
+    if (/[^\u0009\u000a\u000d\u0020-\ud7ff\ue000-\ufffd\u{10000}-\u{10ffff}]/u.test(value)) {
+      throw new Error('value contains an invalid XML character');
+    }
+    return value;
   }
 }

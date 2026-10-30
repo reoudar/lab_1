@@ -5,6 +5,7 @@ export abstract class Shape {
   private readonly geometry = new Map<string, number>();
   private readonly nonnegative = new Set<string>();
   private readonly styles = new Map<string, string>();
+  private readonly imported = new Map<string, string>();
 
   protected constructor(private readonly identifier: string, private readonly elementName: string) {
     Value.id(identifier);
@@ -34,6 +35,7 @@ export abstract class Shape {
     for (const [name, value] of next) this.geometry.set(name, value);
   }
   set(attribute: string, value: string): void {
+    Value.xmlText(value);
     if (this.geometry.has(attribute)) {
       this.geometry.set(attribute, this.nonnegative.has(attribute) ? Value.nonnegative(value, attribute) : Value.number(value, attribute));
     } else if (['fill', 'stroke', 'stroke-width'].includes(attribute)) {
@@ -41,7 +43,18 @@ export abstract class Shape {
     } else throw new Error(`unknown attribute: ${attribute}`);
   }
   attributes(): ReadonlyMap<string, string> {
-    return new Map([['id', this.id], ...[...this.geometry].map(([key, value]) => [key, String(value)] as [string, string]), ...this.styles]);
+    return new Map([['id', this.id], ...[...this.geometry].map(([key, value]) => [key, String(value)] as [string, string]), ...this.styles, ...this.imported]);
+  }
+  importAttribute(name: string, value: string): void {
+    Value.xmlText(value);
+    if (this.geometry.has(name)) { this.set(name, value.replace(/px$/, '')); return; }
+    if (['font-size', 'font-family', 'font-weight', 'text-anchor', 'opacity', 'fill-opacity', 'stroke-opacity', 'stroke-linecap', 'stroke-linejoin'].includes(name) || /^data-[\w-]+$/.test(name)) {
+      this.imported.set(name, value);
+    } else this.set(name, value);
+  }
+  normalizeImport(scale: number, dx: number, dy: number, strokeWidth: number, _fontSize: number): void {
+    this.scale(scale); this.move(dx, dy);
+    if (scale !== 1) this.set('stroke-width', String(Value.nonnegative(strokeWidth * scale, 'stroke-width')));
   }
   geometryDescription(): string { return [...this.geometry].map(([key, value]) => `${key}=${value}`).join(' '); }
   styleDescription(): string { return [...this.styles].map(([key, value]) => `${key}=${value}`).join(' '); }
@@ -51,10 +64,15 @@ export abstract class Shape {
   contains(id: string): boolean { return this.id === id || this.children.some(child => child.contains(id)); }
   inheritStyles(parent: Shape): void {
     for (const [name, value] of parent.styles) if (!this.styles.has(name)) this.styles.set(name, value);
+    for (const name of ['font-size', 'font-family', 'font-weight', 'text-anchor', 'fill-opacity', 'stroke-opacity', 'stroke-linecap', 'stroke-linejoin']) {
+      const value = parent.imported.get(name);
+      if (value !== undefined && !this.imported.has(name)) this.imported.set(name, value);
+    }
   }
   protected copyStateTo(target: Shape): void {
     for (const [key, value] of this.geometry) target.geometry.set(key, value);
     for (const [key, value] of this.styles) target.styles.set(key, value);
+    for (const [key, value] of this.imported) target.imported.set(key, value);
   }
   abstract clone(): Shape;
 }

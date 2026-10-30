@@ -16,6 +16,11 @@ export class HelpCommand extends Command {
       'set <id> <attr> <value>', 'undo', 'redo',
       'group <newGid> <id1> <id2>...', 'ungroup <gid>', 'addto <gid> <id>',
       'front <id>', 'back <id>', 'tree [id]', 'show <id>',
+      'read <file.svg>', 'save [file.svg]',
+      'set whitelist: fill, stroke, stroke-width, own geometry; text content via text',
+      'init w: height defaults to 600; canvas w: current height is retained',
+      'Positive canvas dimensions and scale factors; shape dimensions may be zero.',
+      'Use double quotes for spaces, # at line start for comments, EOF to exit.',
     ];
   }
 }

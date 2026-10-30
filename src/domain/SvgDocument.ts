@@ -6,6 +6,7 @@ export class SvgDocument {
   private readonly roots: Shape[] = [];
   private canvasWidth: number;
   private canvasHeight: number;
+  private readonly rootAttributes = new Map<string, string>();
   constructor(width = 800, height = 600) {
     this.canvasWidth = Value.positive(width, 'width');
     this.canvasHeight = Value.positive(height, 'height');
@@ -13,9 +14,20 @@ export class SvgDocument {
   get width(): number { return this.canvasWidth; }
   get height(): number { return this.canvasHeight; }
   get children(): readonly Shape[] { return [...this.roots]; }
+  attributes(): ReadonlyMap<string, string> {
+    return new Map([['width', String(this.width)], ['height', String(this.height)], ['viewBox', `0 0 ${this.width} ${this.height}`], ...this.rootAttributes]);
+  }
+  importAttribute(name: string, value: string): void {
+    if (!['viewBox', 'preserveAspectRatio', 'id', 'fill', 'stroke', 'stroke-width', 'font-size', 'font-family', 'font-weight', 'text-anchor'].includes(name)) {
+      throw new Error(`unsupported svg attribute: ${name}`);
+    }
+    if (name === 'id') Value.id(value);
+    this.rootAttributes.set(name, Value.xmlText(value));
+  }
   resize(width: number, height: number): void {
     Value.positive(width, 'width'); Value.positive(height, 'height');
     this.canvasWidth = width; this.canvasHeight = height;
+    this.rootAttributes.delete('viewBox');
   }
   all(): Shape[] {
     const result: Shape[] = [];
@@ -45,6 +57,8 @@ export class SvgDocument {
   add(shape: Shape, parentId?: string): void {
     const parent = parentId === undefined ? undefined : this.requireContainer(parentId);
     const seen = new Set(this.all().map(item => item.id));
+    const rootId = this.rootAttributes.get('id');
+    if (rootId !== undefined) seen.add(rootId);
     const pending = [shape];
     while (pending.length) {
       const next = pending.pop()!;
@@ -62,7 +76,7 @@ export class SvgDocument {
     if (parent) parent.insert(shape, index); else this.roots.splice(index, 0, shape);
   }
   group(id: string, ids: readonly string[]): Group {
-    if (this.find(id)) throw new Error(`id already exists: ${id}`);
+    if (this.find(id) || this.rootAttributes.get('id') === id) throw new Error(`id already exists: ${id}`);
     const group = new Group(id);
     if (ids.length === 0) throw new Error('group requires at least one shape');
     if (new Set(ids).size !== ids.length) throw new Error('duplicate group member');
@@ -108,6 +122,7 @@ export class SvgDocument {
   }
   clone(): SvgDocument {
     const copy = new SvgDocument(this.width, this.height);
+    for (const [key, value] of this.rootAttributes) copy.rootAttributes.set(key, value);
     for (const shape of this.roots) copy.roots.push(shape.clone());
     return copy;
   }
