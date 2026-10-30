@@ -1,6 +1,6 @@
 # SVG CLI Phase 1 项目说明
 
-> 状态：S1（工程骨架、词法分析、`help`/REPL）、S2（六类图形、文档树、Composite、工厂）、S3（编辑命令、快照式历史、undo/redo）、S4（group/ungroup/addto/front/back、tree/show）与 S5（SVG 读写、存储适配、IO 屏障）已完成；S6 尚未实施。
+> 状态：S1–S5 已完成；S6 验收已通过（28/28 测试、架构审计 44 个 TypeScript 文件），`examples/` 与 `scripts/` 已落地。
 
 ## 架构方案
 
@@ -14,8 +14,9 @@
 | `src/cli/` | 双引号词法分析、唯一的命令名分发、REPL、用户输出；stdin/stdout 只出现在这里 | **已实现（S1/S3/S4/S5）** |
 | `src/infrastructure/` | SVG XML 编解码、变换归一化、文件系统适配，实现 application 定义的端口 | **已实现（S5）** |
 | `src/main.ts` | 组合根：创建 `FileDocumentStore` 并注入 `Editor`，负责启动 | **已实现（S1/S5）** |
-| `test/` | 单元测试、失败原子性、undo/redo、结构编辑与显示、SVG 往返、真实 CLI 回放与依赖检查 | **部分实现（S1–S5）** |
-| `examples/` | 可回放的命令脚本与示例 SVG 输入 | 计划（S6） |
+| `test/` | 单元测试、失败原子性、undo/redo、结构编辑与显示、SVG 往返、真实 CLI 回放与依赖检查 | **已实现（S1–S6，28/28）** |
+| `examples/` | 可回放的命令脚本与示例 SVG 输入（`session.txt`、`other.svg`、`flowchart.txt` 及生成的 SVG） | **已实现（S6）** |
+| `scripts/` | 示例回放、架构审计与阶段快照（`replay.mjs`、`verify-architecture.mjs`、`Snapshot.ps1`） | **已实现（S6）** |
 
 当前落地内容：
 
@@ -24,6 +25,8 @@
 - S3：`src/application/{Arguments,Command,EditCommand,CommandHistory,Editor}.ts`、`src/commands/` 下 10 个命令类、更新后的 `src/cli/CommandDispatcher.ts`，以及 `test/editing.test.mjs`。
 - S4：`src/application/TreeFormatter.ts`、`src/commands/{Group,Ungroup,AddTo,Front,Back,Tree,Show}Command.ts`，以及更新后的 `CommandDispatcher`、`HelpCommand`、`Shape`（样式继承）、`SvgDocument`（group/ungroup/addto/reorder）与 `test/structure.test.mjs`。
 - S5：`src/application/DocumentStore.ts`、`src/commands/{Read,Save}Command.ts`、`src/infrastructure/{FileDocumentStore,SvgCodec,SvgTransform}.ts`、更新后的 `Editor`/`main`/`CommandDispatcher`/`HelpCommand` 与 `test/svg.test.mjs`；新增运行时依赖 `@xmldom/xmldom`。
+- S6：`test/acceptance.test.mjs`、`examples/{session.txt,flowchart.txt,other.svg,demo.svg,flowchart.svg}`、`scripts/{replay.mjs,verify-architecture.mjs}`、`package.json` 的 `check`/`audit:architecture`/`demo`/`demo:session` 脚本；`npm run check` 已通过 28 项测试与 44 个 TS 文件的架构审计。
+- 尚未实现：插件化与 `box`（后续阶段）。
 
 ```plantuml
 @startuml
@@ -154,6 +157,13 @@ abstract class EditCommand extends Command {
 - 验证：新增 8 个 SVG/IO 测试；`npm test` 23/23 通过（分词 3 + 领域 4 + 编辑 4 + 结构 4 + SVG 8）。
 - 阶段边界：插件化、`box` 与 `examples/` 尚未实现（S6）。
 
+### S6：完整验收与提交准备（验收已通过）
+
+- 新增 `test/acceptance.test.mjs`：通过子进程启动真实 `dist/main.js`，回放原文第 6 节完整会话与流程图；另覆盖全部编辑命令的 undo/redo、六类图形 `create ... in`、id 大小写敏感、IO 屏障失败场景。
+- `examples/` 提供可回放会话与输入：`session.txt`、`flowchart.txt`、`other.svg`，以及回放生成的 `demo.svg`、`flowchart.svg`；`scripts/replay.mjs` 负责回放，`verify-architecture.mjs` 检查依赖方向、一类一文件、switch 分派与运行时循环。
+- `package.json` 增加 `check`、`audit:architecture`、`demo`、`demo:session`；`npm run check` 实测 **28/28 测试通过**，架构审计通过（44 个 TypeScript 文件，无违规依赖、类命名问题、switch 分派或运行时循环）。`demo` 与 `demo:session` 均退出码 0。
+- 阶段边界：S6 的验收与自动化检查已完成。
+
 ### 来自实现与自查的修正
 
 - **引号信息必须保留**：`create text t 1 2 "开始 in here"` 中的 `in` 是文本内容，不能当作 `in <containerId>` 子句。因此 `Token` 记录 `isQuoted`，后续语法解析只在未加引号的 token 上识别关键字。
@@ -177,6 +187,9 @@ abstract class EditCommand extends Command {
 - **IO 成功才设屏障**：`read`/`save` 成功后清空历史并禁止 undo/redo；失败的读取或写入不影响当前文档、路径与重做栈。
 - **只接受可安全展开的 SVG**：DTD/实体、未知元素/属性/命名空间、非法 XML 字符、非等比或旋转变换均显式报错；`translate`/正等比 `scale` 会展开进几何，输出不再保留 `transform`。
 - **组透明度不展开**：`Group` 拒绝导入 `opacity`，因为组的透明度会与重叠子元素合成，简单下发到子元素会改变视觉效果。
+- **验收测试先于夹具落地（已解决）**：首次运行 `acceptance.test.mjs` 时缺少 `examples/`，曾出现 2 项 `ENOENT`（26/28）；补齐 `session.txt`、`other.svg`、`flowchart.txt` 后达到 28/28。
+- **脚本入口必须有实现（已解决）**：`npm run check`/`demo` 依赖的 `scripts/verify-architecture.mjs`、`scripts/replay.mjs` 已补齐；`check` 通过测试与架构审计，两个 demo 退出码均为 0。
+- **根 README 保持最小说明**：根 `README.md` 只保留作业标识，测试结果与架构说明以本文档为准，避免重复易过期结论。
 
 ### 修订记录
 
@@ -187,20 +200,43 @@ abstract class EditCommand extends Command {
 | S3 | 更新 Command 落地契约、命令/历史/屏障/失败原子性；补充编辑测试与依赖边；标注 S4–S6 未完成项 | 反映当前实现并避免过度声明 |
 | S4 | 更新树结构命令、显示格式化、group 顺序与 ungroup 样式继承；补充 4 项结构测试；标注 S5–S6 未完成项 | 实现与文档同步 |
 | S5 | 更新 DocumentStore/SVG 编解码/原子写入/变换归一化/IO 屏障；补充 8 项 SVG 测试与依赖边；标注 S6 未完成项 | 实现与文档同步 |
+| S6 | 记录验收夹具/回放与架构审计脚本已补齐；更新为 28/28 与审计通过的真实结果；保留 tag 待办 | 验收结果与文档同步 |
 
 ## 一致性自查
 
-1. **模块划分**：与终态方案**基本一致**——`domain`、`application`、`commands`、`cli`、`infrastructure`、`main` 均已落地，测试目录覆盖 `tokenizer/domain/editing/structure/svg`；仅 `examples/` 尚未创建（S6），插件化与 `box` 属后续阶段。该差异已记入“模块划分·当前状态”、S1–S5 过程记录与修订记录；待 S6 完成后重新核对。
-2. **依赖方向**：现有依赖为 `main → cli + infrastructure`；`cli → commands + application`；`commands → application + domain`；`application → domain`（含 `TreeFormatter`/`DocumentStore`）；`infrastructure → application + domain`（`FileDocumentStore`/`SvgCodec`/`SvgTransform`）；`domain` 内部为具体图形 → `Shape` → `Value`，`Group` 依赖 `Shape`/`Value`，`SvgDocument` 依赖 `Shape`/`Group`/`Value`，`ShapeFactory` 依赖各具体图形。无反向依赖或循环；`cli` 不直接依赖 `domain`，stdin/stdout 仅出现在 `Repl`，文件系统与 `@xmldom/xmldom` 仅出现在 `infrastructure`。
+1. **模块划分**：与终态方案**基本一致**——`domain`、`application`、`commands`、`cli`、`infrastructure`、`main`、`test`、`examples`、`scripts` 均已落地，当前无未记录的模块差异；最终提交与 `final` tag 由用户完成。进度记录见“模块划分·当前状态”和 S6 过程记录。
+2. **依赖方向**：现有依赖为 `main → cli + infrastructure`；`cli → commands + application`；`commands → application + domain`；`application → domain`（含 `TreeFormatter`/`DocumentStore`）；`infrastructure → application + domain`（`FileDocumentStore`/`SvgCodec`/`SvgTransform`）；`domain` 内部为具体图形 → `Shape` → `Value`，`Group` 依赖 `Shape`/`Value`，`SvgDocument` 依赖 `Shape`/`Group`/`Value`，`ShapeFactory` 依赖各具体图形。无反向依赖或循环；`cli` 不直接依赖 `domain`，stdin/stdout 仅出现在 `Repl`，文件系统与 `@xmldom/xmldom` 仅出现在 `infrastructure`。`scripts/` 为构建期工具，不进入 `src` 依赖图；`npm run audit:architecture` 已对 44 个 TS 文件验证通过。
 
 ## 质量保证手段
 
-- **已执行**：`npm install`、`npm run build`、`npm test`（23/23 通过：分词 3 + 领域 4 + 编辑 4 + 结构 4 + SVG/IO 8），并用管道向 CLI 回放 `help`、非法命令与注释行，确认错误隔离与注释行为。
-- **自动门禁**：TypeScript 严格编译（`strict`、`noUncheckedIndexedAccess`、`noUnusedLocals/Parameters`）+ `node --test`。
-- **当前测试覆盖**：
-  - 分词：引号、转义、Unicode、Windows 路径、空字符串；整行注释；未闭合引号与非法引号位置；错误恢复；`help` 分发。
-  - 领域：五类叶子多态 `move`/`scale`；嵌套 `Group` 递归、深拷贝、样式继承；全局大小写敏感 id 唯一性与失败插入不改变文档；未知类型、非法数值、负尺寸、属性白名单、自嵌套循环与非法缩放因子。
-  - 编辑与历史：`create`/`move`/`scale`/`set`/`delete` 各自形成可撤销单元；undo/redo 正确恢复；失败保持文档与重做栈；成功后清空 redo；`init`/`canvas` 修改尺寸的 IO 屏障；带引号 `"in"`、子树删除、数值溢出回滚。
-  - 结构与显示：`group` 保持文档顺序并可 undo；跨父级 group 的归属；`addto`、`front`/`back` 的同级顺序；祖先/循环/重复成员/根级 ungroup 失败不改状态；`tree`/`show` 的层级、几何、文本与样式输出且不进入历史。
-  - SVG/IO：缺 id 先保留显式 id 再确定性补全；六类图形、省略样式、嵌套、Unicode 与文本转义 round-trip；非法 XML/id 重复/未知元素/属性/命名空间/DTD/实体/非法变换显式失败；`viewBox`/`data-kind` 保留且 `box` 降级为 `g`；`translate`/等比缩放展开；成功 IO 屏障与路径记忆、失败 IO 保持文档/路径/redo、原子写入不破坏原文件。
-- **后续计划**：S6 增加 `examples/` 回放、模块依赖与一类一文件检查、最终一致性自查。
+- **已执行**：`npm install`、`npm run check`；`npm test` **28/28 通过**（分词 3 + 领域 4 + 编辑 4 + 结构 4 + SVG/IO 8 + 验收 5），`audit:architecture` 通过（44 个 TypeScript 文件，依赖方向/类命名/无 switch 分派/无运行时循环）。`npm run demo` 与 `npm run demo:session` 均退出码 0，分别生成 8 元素流程图与 5 元素示例。
+- **自动门禁**：TypeScript 严格编译（`strict`、`noUncheckedIndexedAccess`、`noUnusedLocals/Parameters`）+ `node --test` + 架构审计脚本。
+
+### 测试清单（28 项）
+
+| 测试文件 | 数量 | 阶段 | 验证内容 |
+| --- | ---: | --- | --- |
+| `test/tokenizer.test.mjs` | 3 | S1 | 引号/转义/Unicode/空字符串/颜色/Windows 路径分词；整行注释；未闭合引号与错误恢复；`help` 分发 |
+| `test/domain.test.mjs` | 4 | S2 | 五类叶子多态 `move`/`scale`；嵌套 `Group` 递归、深拷贝、样式继承；全局大小写敏感唯一 id；未知类型、非法数值、负尺寸、属性白名单、循环嵌套 |
+| `test/editing.test.mjs` | 4 | S3 | `create/move/scale/set/delete` 各自可撤销；失败保持文档与 redo；`init`/`canvas` 的 IO 屏障；带引号 `"in"`、子树删除、数值溢出回滚 |
+| `test/structure.test.mjs` | 4 | S4 | `group` 保持文档顺序并可 undo；跨父级 group、`addto`、`front`/`back`；祖先/循环/重复 id/根级 ungroup 失败；`tree`/`show` 输出且不进入历史 |
+| `test/svg.test.mjs` | 8 | S5 | 缺 id 确定性补全；六类图形与 Unicode round-trip；非法 XML/未知元素/DTD/变换报错；`viewBox`/`data-kind` 保留；transform 展开；IO 成功/失败原子性与屏障；原子写入；非法 XML 字符 |
+| `test/acceptance.test.mjs` | 5 | S6 | 子进程启动真实 `dist/main.js`，回放原文第 6 节会话（含两条预期错误与缺 id 警告）与中文流程图；全部编辑命令 undo/redo；六类图形 `create ... in`；大小写敏感 id；IO 屏障失败 |
+
+### 测试夹具与运行方式
+
+- `examples/session.txt`：原文第 6 节完整会话，供 `npm run demo:session` 与验收测试回放；包含预期的“祖先分组错误”和“保存后 undo 错误”。
+- `examples/flowchart.txt`：两节点中文流程图脚本，供 `npm run demo` 与验收测试回放。
+- `examples/other.svg`：含缺 id 元素的外部 SVG，用于验证自动补 id 与警告。
+- `examples/demo.svg`、`examples/flowchart.svg`：上述回放生成的产物，可直接预览。
+- `scripts/replay.mjs`：通过子进程运行 `dist/main.js`，把示例脚本经 stdin 回放并原样输出。
+- `scripts/verify-architecture.mjs`：检查一类一文件/类名、顶层自由函数、`switch` 分派、模块依赖方向、外部依赖位置与运行时循环。
+- `scripts/Snapshot.ps1`：把当前阶段源码/文档打包到 `.checkpoints/<Stage>.zip`，用于阶段快照，不参与测试。
+
+```powershell
+npm test                  # 构建并运行 28 项测试
+npm run check             # npm test + 架构审计
+npm run demo              # 回放流程图
+npm run demo:session      # 回放完整会话
+powershell -File scripts/Snapshot.ps1 -Stage S6
+```

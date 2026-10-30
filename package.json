@@ -10,11 +10,14 @@
     "build": "tsc -p tsconfig.json",
     "cli": "npm run build --silent && node dist/main.js",
     "test": "npm run build --silent && node --test test/*.test.mjs",
-    "check": "npm test"
+    "check": "npm test && npm run audit:architecture",
+    "audit:architecture": "npm run build --silent && node scripts/verify-architecture.mjs",
+    "demo": "npm run build --silent && node scripts/replay.mjs examples/flowchart.txt",
+    "demo:session": "npm run build --silent && node scripts/replay.mjs examples/session.txt"
   },
   "devDependencies": {
-    "@types/node": "^26.6.5",
-    "typescript": "^7.0.2"
+    "@types/node": "24.19.2",
+    "typescript": "5.9.3"
   },
   "dependencies": {
     "@xmldom/xmldom": "^0.9.12"
