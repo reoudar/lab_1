@@ -5,7 +5,7 @@
 | 步骤 | 交付 | 验收门槛 | 状态 |
 | --- | --- | --- | --- |
 | S0 | 需求、架构、Git 初始化 | 核对原文和阶段边界 | 已完成 |
-| S1 | TS 工程、词法分析、help/REPL | 编译、引号/注释/错误恢复测试 | 待实施 |
+| S1 | TS 工程、词法分析、help/REPL | 编译、引号/注释/错误恢复测试 | 已完成 |
 | S2 | 六类图形、文档、Composite | 几何、唯一 id、嵌套、深拷贝测试 | 待实施 |
 | S3 | 编辑命令与历史 | create/move/scale/set/delete、undo/redo 原子性 | 待实施 |
 | S4 | 树结构编辑与显示 | group/ungroup/addto/front/back、顺序与循环检查 | 待实施 |
