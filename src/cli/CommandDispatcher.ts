@@ -12,6 +12,13 @@ import { DeleteCommand } from '../commands/DeleteCommand.js';
 import { UndoCommand } from '../commands/UndoCommand.js';
 import { RedoCommand } from '../commands/RedoCommand.js';
 import { HelpCommand } from '../commands/HelpCommand.js';
+import { GroupCommand } from '../commands/GroupCommand.js';
+import { UngroupCommand } from '../commands/UngroupCommand.js';
+import { AddToCommand } from '../commands/AddToCommand.js';
+import { FrontCommand } from '../commands/FrontCommand.js';
+import { BackCommand } from '../commands/BackCommand.js';
+import { TreeCommand } from '../commands/TreeCommand.js';
+import { ShowCommand } from '../commands/ShowCommand.js';
 
 export class CommandDispatcher {
   private readonly tokenizer = new Tokenizer();
@@ -20,6 +27,8 @@ export class CommandDispatcher {
     ['init', InitCommand], ['canvas', CanvasCommand], ['create', CreateCommand],
     ['move', MoveCommand], ['scale', ScaleCommand], ['set', SetCommand], ['delete', DeleteCommand],
     ['undo', UndoCommand], ['redo', RedoCommand], ['help', HelpCommand],
+    ['group', GroupCommand], ['ungroup', UngroupCommand], ['addto', AddToCommand],
+    ['front', FrontCommand], ['back', BackCommand], ['tree', TreeCommand], ['show', ShowCommand],
   ]);
   constructor(private readonly editor = new Editor()) {}
   execute(line: string): string[] {

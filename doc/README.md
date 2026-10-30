@@ -1,6 +1,6 @@
 # SVG CLI Phase 1 项目说明
 
-> 状态：S1（工程骨架、词法分析、`help`/REPL）、S2（六类图形、文档树、Composite、工厂）与 S3（编辑命令、快照式历史、undo/redo）已完成。
+> 状态：S1（工程骨架、词法分析、`help`/REPL）、S2（六类图形、文档树、Composite、工厂）、S3（编辑命令、快照式历史、undo/redo）与 S4（group/ungroup/addto/front/back、tree/show）已完成；S5–S6 尚未实施。
 
 ## 架构方案
 
@@ -9,12 +9,12 @@
 | 目录 | 职责 | 当前状态 |
 | --- | --- | --- |
 | `src/domain/` | 图形抽象与具体叶子、`Group` 容器、几何约束、文档树、唯一 id 管理；`move`/`scale`/`set` 等通过多态统一处理叶子与容器 | **已实现（S2）** |
-| `src/application/` | 编辑会话、命令接口、历史（undo/redo）、`DocumentStore` 端口；不读取 stdin、不直接操作文件 | **部分实现（S3；存储端口待 S5）** |
-| `src/commands/` | 每条编辑命令一个类：解析后的参数校验、调用领域行为、产生可撤销结果 | **部分实现（S3；树编辑命令待 S4）** |
-| `src/cli/` | 双引号词法分析、唯一的命令名分发、REPL、用户输出；stdin/stdout 只出现在这里 | **已实现（S1/S3）** |
+| `src/application/` | 编辑会话、命令接口、历史（undo/redo）、树/属性格式化、`DocumentStore` 端口；不读取 stdin、不直接操作文件 | **部分实现（S3/S4；存储端口待 S5）** |
+| `src/commands/` | 每条编辑命令一个类：解析后的参数校验、调用领域行为、产生可撤销结果 | **部分实现（S3/S4；read/save 待 S5）** |
+| `src/cli/` | 双引号词法分析、唯一的命令名分发、REPL、用户输出；stdin/stdout 只出现在这里 | **已实现（S1/S3/S4）** |
 | `src/infrastructure/` | SVG XML 编解码与文件系统适配，实现 application 定义的端口 | 计划（S5） |
 | `src/main.ts` | 组合根：创建具体实现并注入，负责启动 | **已实现（S1）** |
-| `test/` | 单元测试、失败原子性、undo/redo、SVG 往返、真实 CLI 回放与依赖检查 | **部分实现（S1/S2/S3）** |
+| `test/` | 单元测试、失败原子性、undo/redo、结构编辑与显示、SVG 往返、真实 CLI 回放与依赖检查 | **部分实现（S1–S4）** |
 | `examples/` | 可回放的命令脚本与示例 SVG 输入 | 计划（S6） |
 
 当前落地内容：
@@ -22,6 +22,7 @@
 - S1：`src/main.ts`、`src/cli/{Token,Tokenizer,CommandDispatcher,Repl}.ts`、`test/tokenizer.test.mjs` 与 TypeScript 工程配置。
 - S2：`src/domain/` 下的 `Value`、`Shape`、`Rect`、`Circle`、`Ellipse`、`Line`、`TextShape`、`Group`、`SvgDocument`、`ShapeFactory`，以及 `test/domain.test.mjs`。
 - S3：`src/application/{Arguments,Command,EditCommand,CommandHistory,Editor}.ts`、`src/commands/` 下 10 个命令类、更新后的 `src/cli/CommandDispatcher.ts`，以及 `test/editing.test.mjs`。
+- S4：`src/application/TreeFormatter.ts`、`src/commands/{Group,Ungroup,AddTo,Front,Back,Tree,Show}Command.ts`，以及更新后的 `CommandDispatcher`、`HelpCommand`、`Shape`（样式继承）、`SvgDocument`（group/ungroup/addto/reorder）与 `test/structure.test.mjs`。
 
 ```plantuml
 @startuml
@@ -48,8 +49,8 @@ infrastructure --> domain
 
 | 模式 | 落地点 | 现状 | 说明 |
 | --- | --- | --- | --- |
-| **Command** | `src/commands/` 每个命令一个类；`src/application/{Command,EditCommand,CommandHistory,Editor}` 负责执行与撤销/重做 | **已实现（S3）** | 每条编辑命令封装为对象，成功后进入历史；一条命令是一个撤销单元。`EditCommand` 在工作副本上执行，保存执行前后快照；历史只接受成功执行的命令，失败不改变文档 |
-| **Composite** | `src/domain/` 的 `Shape` 抽象、叶子图形与 `Group` 容器 | **已实现（S2）** | 叶子与容器共用 `move`/`scale`/`set` 等接口；`delete` 由 `SvgDocument` 按 id 删除，容器连同子孙。`create ... in <g>`、`group`、`ungroup`、`addto` 均基于该结构 |
+| **Command** | `src/commands/` 每个命令一个类；`src/application/{Command,EditCommand,CommandHistory,Editor}` 负责执行与撤销/重做 | **已实现（S3/S4）** | 每条编辑命令封装为对象，成功后进入历史；一条命令是一个撤销单元。`EditCommand` 在工作副本上执行，保存执行前后快照；`tree`/`show` 等显示命令继承 `Command`，不进入历史。历史只接受成功执行的命令，失败不改变文档 |
+| **Composite** | `src/domain/` 的 `Shape` 抽象、叶子图形与 `Group` 容器；`SvgDocument` 的 group/ungroup/addto/reorder | **已实现（S2/S4）** | 叶子与容器共用 `move`/`scale`/`set` 等接口；容器递归作用于子孙。`group` 保持文档顺序，`ungroup` 提升子节点并继承组样式，`addto` 移动归属，`front`/`back` 调整同级顺序 |
 | **Factory** | `src/domain/ShapeFactory.ts`：类型名 → 具体类 | **已实现（S2）** | 集中注册六种内置类型；CLI 创建已接入（S3），SVG 读入待 S5，避免在领域代码中散布 `switch(tag)`；按名分派集中于此，并标记为后续插件化重构点 |
 | **Adapter / 依赖倒置** | `application` 定义 `DocumentStore` 端口；`infrastructure` 实现文件与 XML 编解码 | S5 落地 | 应用层只依赖端口，便于替换存储介质或在测试中使用内存实现 |
 
@@ -66,7 +67,7 @@ abstract class EditCommand extends Command {
 }
 ```
 
-`EditCommand.apply` 先克隆当前文档，在副本上执行 `change`，全部成功后才记录执行前后快照；`CommandHistory` 只把成功的命令压入 `past`，并在新编辑后清空 `future`。`init`、`canvas` 修改尺寸和后续的 `read`/`save` 会设置历史屏障。`CommandDispatcher` 只负责“命令名 → 命令类”的一次性映射，不承载领域逻辑。
+`EditCommand.apply` 先克隆当前文档，在副本上执行 `change`，全部成功后才记录执行前后快照；`CommandHistory` 只把成功的命令压入 `past`，并在新编辑后清空 `future`。`init`、`canvas` 修改尺寸和后续的 `read`/`save` 会设置历史屏障。`CommandDispatcher` 只负责“命令名 → 命令类”的一次性映射，不承载领域逻辑。`tree`/`show` 由 `application/TreeFormatter` 统一格式化，不改动文档，因此不进入历史。
 
 ### 3. 依赖方向规则
 
@@ -85,7 +86,7 @@ abstract class EditCommand extends Command {
 - 禁止反向依赖与循环依赖；一旦出现即列为待处理项。
 - 文件系统与 stdin/stdout 只能出现在 `infrastructure` 和 `cli/Repl`，不得进入 `domain`/`application`。
 - 按名字分派只允许两处：`cli/CommandDispatcher`（命令名 → 命令）与 `domain/ShapeFactory`（类型名 → 类），两处均标记为后续插件化重构点。
-- 当前检查结果：`domain` 仅依赖自身与 TypeScript 类型，不依赖 Node IO；`application → domain`（`Editor`/`EditCommand`/`CommandHistory`/`Arguments`）；`commands → application + domain`；`cli → commands + application`；`main → cli`。无反向或循环依赖。`infrastructure` 尚未创建。按名分派为 `cli/CommandDispatcher`（命令名 → 命令类）与 `domain/ShapeFactory`（类型名 → 类），均为约定内、待插件化重构点；当前无违反项。
+- 当前检查结果：`domain` 仅依赖自身与 TypeScript 类型，不依赖 Node IO；`application → domain`（`Editor`/`EditCommand`/`CommandHistory`/`Arguments`/`TreeFormatter`）；`commands → application + domain`；`cli → commands + application`；`main → cli`。无反向或循环依赖。`infrastructure` 尚未创建。按名分派为 `cli/CommandDispatcher`（命令名 → 命令类）与 `domain/ShapeFactory`（类型名 → 类），均为约定内、待插件化重构点；当前无违反项。
 
 ### 4. 变化点假设
 
@@ -133,6 +134,15 @@ abstract class EditCommand extends Command {
 - 验证：新增 4 个编辑测试；`npm test` 11/11 通过（分词 3 + 领域 4 + 编辑 4）。
 - 阶段边界：`read`/`save`（S5）、`group`/`ungroup`/`addto`/`front`/`back`/`tree`/`show`（S4）尚未实现。
 
+### S4：树结构编辑与显示
+
+- `SvgDocument` 增加 `group`/`ungroup`/`addTo`/`reorder`：`group` 先校验新 id、重复成员和祖先/后代关系，再按文档顺序收编；同父节点时插入到首个成员的位置，跨父节点时挂在根末尾。
+- `ungroup` 拒绝根级容器，按原顺序把子节点提升到父级，并把组样式合并给缺少同名样式的子节点；`addto` 拒绝把容器移入自身子孙；`front`/`back` 在同一父级内调整顺序。
+- `TreeFormatter` 统一生成 `tree [id]` 的树形文本（内联几何/样式摘要）与 `show <id>` 的属性明细（含父级和 text 内容）；显示命令不修改文档。
+- `src/commands/` 新增 `group`、`ungroup`、`addto`、`front`、`back`、`tree`、`show` 七个命令类，`CommandDispatcher` 与 `help` 同步注册。
+- 验证：新增 4 个结构测试；`npm test` 15/15 通过（分词 3 + 领域 4 + 编辑 4 + 结构 4）。
+- 阶段边界：`read`/`save`（S5）、插件化与 `box`（后续阶段）尚未实现。
+
 ### 来自实现与自查的修正
 
 - **引号信息必须保留**：`create text t 1 2 "开始 in here"` 中的 `in` 是文本内容，不能当作 `in <containerId>` 子句。因此 `Token` 记录 `isQuoted`，后续语法解析只在未加引号的 token 上识别关键字。
@@ -147,6 +157,10 @@ abstract class EditCommand extends Command {
 - **失败不清空 redo**：编辑失败、显示命令和 `undo` 之后的 `redo` 行为分别测试；只有成功的新编辑才清空 `future`。
 - **IO 屏障**：`init` 与 `canvas` 修改尺寸清空历史并禁止 undo/redo，直到下一次成功编辑；`canvas` 无参数显示尺寸不设屏障。
 - **数值溢出也原子回滚**：在副本上执行 `scale` 时 `1e308 * 100` 溢出为 `Infinity`，校验抛错后当前文档保持不变。
+- **group 顺序按文档而非参数**：`group inner c a` 的成员顺序以当前文档顺序为准，参数顺序不影响 z-order；测试同时验证 undo 能完整恢复原父级与位置。
+- **ungroup 处理样式继承**：解散容器时，组上的样式合并到没有同名样式的子节点，避免视觉属性丢失；子节点顺序保持不变。
+- **显示命令不进历史**：`tree`/`show` 只读取文档并格式化输出，执行后 `undo` 仍撤销上一条编辑命令。
+- **结构失败保持状态**：祖先/后代循环、重复成员、根级 ungroup、addto 自包含等失败均不改变文档；测试用前后 `tree` 输出对比验证。
 
 ### 修订记录
 
@@ -155,18 +169,20 @@ abstract class EditCommand extends Command {
 | S1 | 补充 CLI 骨架、词法分析与实际测试结果；把“待实施”改为“已完成” | 文档不能停留在计划状态 |
 | S2 | 更新模块状态、Composite/Factory 落地情况、领域测试与依赖检查；新增 S2 过程记录 | 实现与方案对齐 |
 | S3 | 更新 Command 落地契约、命令/历史/屏障/失败原子性；补充编辑测试与依赖边；标注 S4–S6 未完成项 | 反映当前实现并避免过度声明 |
+| S4 | 更新树结构命令、显示格式化、group 顺序与 ungroup 样式继承；补充 4 项结构测试；标注 S5–S6 未完成项 | 实现与文档同步 |
 
 ## 一致性自查
 
-1. **模块划分**：与终态方案**暂不一致**——实际已有 `src/cli/`、`src/domain/`、`src/application/`、`src/commands/`、`src/main.ts` 与 `test/{tokenizer,domain,editing}.test.mjs`；`infrastructure` 与 `examples` 尚未创建，`commands` 中树编辑命令待 S4。该差异属于分步实施中的计划内未完成项，已记入“模块划分·当前状态”、S1–S3 过程记录与修正记录；待 S4–S6 完成后重新逐项核对。
-2. **依赖方向**：现有依赖为 `main → cli`；`cli → commands + application`；`commands → application + domain`；`application → domain`；`domain` 内部为具体图形 → `Shape` → `Value`，`Group` 依赖 `Shape`/`Value`，`SvgDocument` 依赖 `Shape`/`Group`/`Value`，`ShapeFactory` 依赖各具体图形。无反向依赖或循环；`cli` 不直接依赖 `domain`，stdin/stdout 仅出现在 `Repl`，文件 IO 尚未出现。
+1. **模块划分**：与终态方案**暂不一致**——实际已有 `src/cli/`、`src/domain/`、`src/application/`、`src/commands/`、`src/main.ts` 与 `test/{tokenizer,domain,editing,structure}.test.mjs`；`infrastructure` 与 `examples` 尚未创建，`read`/`save` 待 S5。该差异属于分步实施中的计划内未完成项，已记入“模块划分·当前状态”、S1–S4 过程记录与修订记录；待 S5–S6 完成后重新逐项核对。
+2. **依赖方向**：现有依赖为 `main → cli`；`cli → commands + application`；`commands → application + domain`；`application → domain`（含 `TreeFormatter`）；`domain` 内部为具体图形 → `Shape` → `Value`，`Group` 依赖 `Shape`/`Value`，`SvgDocument` 依赖 `Shape`/`Group`/`Value`，`ShapeFactory` 依赖各具体图形。无反向依赖或循环；`cli` 不直接依赖 `domain`，stdin/stdout 仅出现在 `Repl`，文件 IO 尚未出现。
 
 ## 质量保证手段
 
-- **已执行**：`npm install`、`npm run build`、`npm test`（11/11 通过：分词 3 + 领域 4 + 编辑 4），并用管道向 CLI 回放 `help`、非法命令与注释行，确认错误隔离与注释行为。
+- **已执行**：`npm install`、`npm run build`、`npm test`（15/15 通过：分词 3 + 领域 4 + 编辑 4 + 结构 4），并用管道向 CLI 回放 `help`、非法命令与注释行，确认错误隔离与注释行为。
 - **自动门禁**：TypeScript 严格编译（`strict`、`noUncheckedIndexedAccess`、`noUnusedLocals/Parameters`）+ `node --test`。
 - **当前测试覆盖**：
   - 分词：引号、转义、Unicode、Windows 路径、空字符串；整行注释；未闭合引号与非法引号位置；错误恢复；`help` 分发。
   - 领域：五类叶子多态 `move`/`scale`；嵌套 `Group` 递归、深拷贝、样式继承；全局大小写敏感 id 唯一性与失败插入不改变文档；未知类型、非法数值、负尺寸、属性白名单、自嵌套循环与非法缩放因子。
   - 编辑与历史：`create`/`move`/`scale`/`set`/`delete` 各自形成可撤销单元；undo/redo 正确恢复；失败保持文档与重做栈；成功后清空 redo；`init`/`canvas` 修改尺寸的 IO 屏障；带引号 `"in"`、子树删除、数值溢出回滚。
-- **后续计划**：S4–S5 增加 `group`/`ungroup`/`addto`/`front`/`back`/`tree`/`show`、顺序与循环检查、缺失 id 自动补全、XML 转义与 SVG round-trip 测试；S6 增加模块依赖与一类一文件检查、回放 `phase_cli_1.md` 的典型会话。
+  - 结构与显示：`group` 保持文档顺序并可 undo；跨父级 group 的归属；`addto`、`front`/`back` 的同级顺序；祖先/循环/重复成员/根级 ungroup 失败不改状态；`tree`/`show` 的层级、几何、文本与样式输出且不进入历史。
+- **后续计划**：S5 增加 `read`/`save`、缺失 id 自动补全、XML 转义与 SVG round-trip 测试；S6 增加模块依赖与一类一文件检查、回放 `phase_cli_1.md` 的典型会话。

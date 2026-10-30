@@ -49,6 +49,9 @@ export abstract class Shape {
   position(): string { return this.geometryDescription(); }
   asGroup(): Group { throw new Error(`not a container: ${this.id}`); }
   contains(id: string): boolean { return this.id === id || this.children.some(child => child.contains(id)); }
+  inheritStyles(parent: Shape): void {
+    for (const [name, value] of parent.styles) if (!this.styles.has(name)) this.styles.set(name, value);
+  }
   protected copyStateTo(target: Shape): void {
     for (const [key, value] of this.geometry) target.geometry.set(key, value);
     for (const [key, value] of this.styles) target.styles.set(key, value);

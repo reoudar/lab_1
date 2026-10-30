@@ -14,6 +14,8 @@ export class HelpCommand extends Command {
       'create g <id> [in <containerId>]',
       'delete <id>', 'move <id> <dx> <dy>', 'scale <id> <factor>',
       'set <id> <attr> <value>', 'undo', 'redo',
+      'group <newGid> <id1> <id2>...', 'ungroup <gid>', 'addto <gid> <id>',
+      'front <id>', 'back <id>', 'tree [id]', 'show <id>',
     ];
   }
 }
