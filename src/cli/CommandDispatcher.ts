@@ -1,14 +1,35 @@
 import { Tokenizer } from './Tokenizer.js';
+import { Arguments } from '../application/Arguments.js';
+import { Command } from '../application/Command.js';
+import { Editor } from '../application/Editor.js';
+import { InitCommand } from '../commands/InitCommand.js';
+import { CanvasCommand } from '../commands/CanvasCommand.js';
+import { CreateCommand } from '../commands/CreateCommand.js';
+import { MoveCommand } from '../commands/MoveCommand.js';
+import { ScaleCommand } from '../commands/ScaleCommand.js';
+import { SetCommand } from '../commands/SetCommand.js';
+import { DeleteCommand } from '../commands/DeleteCommand.js';
+import { UndoCommand } from '../commands/UndoCommand.js';
+import { RedoCommand } from '../commands/RedoCommand.js';
+import { HelpCommand } from '../commands/HelpCommand.js';
 
 export class CommandDispatcher {
   private readonly tokenizer = new Tokenizer();
+  // Only command-name dispatch point; phase 2 can inject command providers.
+  private readonly commands = new Map<string, new (args: Arguments) => Command>([
+    ['init', InitCommand], ['canvas', CanvasCommand], ['create', CreateCommand],
+    ['move', MoveCommand], ['scale', ScaleCommand], ['set', SetCommand], ['delete', DeleteCommand],
+    ['undo', UndoCommand], ['redo', RedoCommand], ['help', HelpCommand],
+  ]);
+  constructor(private readonly editor = new Editor()) {}
   execute(line: string): string[] {
     try {
       const tokens = this.tokenizer.tokenize(line);
       if (tokens.length === 0) return [];
-      if (tokens[0]!.text !== 'help') throw new Error(`unknown command: ${tokens[0]!.text}`);
-      if (tokens.length !== 1) throw new Error('usage: help');
-      return ['help — show commands (editing commands arrive in subsequent stages)'];
+      const CommandClass = this.commands.get(tokens[0]!.text);
+      if (!CommandClass) throw new Error(`unknown command: ${tokens[0]!.text}`);
+      const args = tokens.slice(1);
+      return new CommandClass(new Arguments(args.map(token => token.text), args.map(token => token.isQuoted))).execute(this.editor);
     } catch (error) {
       return [`error: ${error instanceof Error ? error.message.replace(/[\r\n]+/g, ' ') : 'unexpected error'}`];
     }
